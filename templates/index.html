@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h2 class="mb-4 text-center">Halaman Utama</h2>
+<p class="text-center mb-5">Selamat datang di Web Testing.</p>
+
+<div class="container">
+    <div class="row g-4 justify-content-center">
+        <!-- Card 1 -->
+        <h2>Daftar Produk</h2>
+            <div class="row">
+                {% for p in products %}
+                    <div class="col-md-3 mb-4">
+                        <div class="card">
+                            <img src="{{ url_for('static', filename='uploads/' ~ p.image) |safe }}" class="card-img-top">
+                            <div class="card-body">
+                                <h5>{{ p.name }}</h5>
+                                <p>{{ p.description|safe }}</p>
+                                <p><b>Rp {{ p.price }}</b></p>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,30 @@
+# Versi docker-compose
+version: '3.8'
+
+# Definisikan service (layanan) Anda
+services:
+  # Nama service, bisa apa saja, misal: 'web' atau 'target-app'
+  # - 'target-app'
+  web:
+    # Perintahkan compose untuk membangun image dari Dockerfile
+    # di folder ini ('.')
+    build: .
+    
+    # Map port dari komputer Anda (HOST) ke container (CONTAINER)
+    # HOST:CONTAINER
+    ports:
+      - "5000:5000"
+      
+    # Ini bagian penting untuk development:
+    # 'Mount' folder proyek Anda saat ini ('.') ke folder /app
+    # di dalam container.
+    # Artinya: Jika Anda mengubah kode di komputer Anda,
+    # container akan langsung melihat perubahan itu tanpa perlu build ulang.
+    volumes:
+      - .:/app
+      
+    # Anda bisa meletakkan Environment Variables di sini
+    # alih-alih di Dockerfile
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development
