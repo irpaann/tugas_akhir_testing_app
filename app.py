@@ -36,11 +36,13 @@ app.register_blueprint(api)
 @app.after_request
 def log_request(response):
     try:
-        full_url = request.url
         if request.method in ["POST", "PUT", "PATCH"]:
             payload = request.get_json(silent=True) if request.is_json else request.form.to_dict()
         else:
-            payload = ""
+            payload = request.query_string.decode()
+
+        response_body = response.get_data(as_text=True)
+        response_preview = response_body[:500]
 
         data = {
             "ip": request.remote_addr,
@@ -49,13 +51,13 @@ def log_request(response):
             "method": request.method,
             "status": response.status_code,
             "ua": request.headers.get("User-Agent", "-"),
-            "payload": payload
+            "payload": payload,
+            "response": response_preview
         }
-
 
         requests.post(MONITORING_URL, json=data, timeout=0.5)
 
-    except:
+    except Exception as e:
         pass
 
     return response

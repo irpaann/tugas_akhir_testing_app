@@ -35,3 +35,8 @@ def upload():
         return redirect(url_for("product.index"))
 
     return render_template("upload.html")
+
+@product.route("/<int:product_id>")
+def detail(product_id):
+    product = Product.query.get_or_404(product_id)
+    return render_template("product_detail.html", product=product)
