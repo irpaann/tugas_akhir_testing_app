@@ -1,19 +1,13 @@
 #!/bin/sh
 
-# Menunggu database siap (opsional, tapi bagus jika DB-nya terpisah)
+# Menunggu database siap
 echo "Menunggu database..."
-sleep 5 
+sleep 10  # MySQL butuh waktu lebih lama untuk booting pertama kali
 
-# Menjalankan inisialisasi database
-# Perintah 'flask' akan tersedia secara otomatis
+# Menjalankan inisialisasi database menggunakan command yang baru kita buat
 echo "Menjalankan inisialisasi database..."
 flask init-db
 
-# Menjalankan perintah utama (server Flask/Gunicorn)
-# Ganti ini dengan perintah CMD asli Anda dari Dockerfile
-# Contoh jika Anda menggunakan gunicorn:
+# Menjalankan perintah utama (Gunicorn)
 echo "Menjalankan aplikasi..."
 exec gunicorn -w 4 -b 0.0.0.0:5000 app:app
-
-# Jika Anda masih dalam pengembangan (menggunakan 'flask run'):
-# exec flask run --host=0.0.0.0 --port=5000
