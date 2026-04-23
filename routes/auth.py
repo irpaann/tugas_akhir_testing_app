@@ -2,34 +2,34 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.security import check_password_hash, generate_password_hash
 from extensions import db
 from models.models import User
-from sqlalchemy import text # Diperlukan untuk mengeksekusi query mentah
+from sqlalchemy import text
 
 auth = Blueprint("auth", __name__)
 
 @auth.route("/login", methods=["GET", "POST"])
-@auth.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form["email"]
-        pw = request.form["password"]
+        email = request.form.get("email")
+        pw = request.form.get("password")
 
-        # Menggunakan Raw SQL agar rentan terhadap SQL Injection
+        # --- LOGIKA VULNERABLE (SQL INJECTION POINT) ---
+        # Kita biarkan kueri ini rentan agar payload ' OR '1'='1' tetap bisa narik data user
         query = text(f"SELECT * FROM user WHERE email = '{email}'")
-        result = db.session.execute(query).fetchone()
-
-        if result:
-            # Jika user ditemukan (atau berhasil di-bypass lewat SQLi)
-            # Kita langsung buatkan session tanpa cek password hash untuk simulasi
-            session["user"] = result[2]  # Kolom email
-            session["user_name"] = result[1]  # Kolom name
-            return redirect(url_for("product.index"))
-
-        # --- PERBAIKAN DI SINI (1) ---
-        # Jika query tidak menghasilkan apapun (result is None)
-        return "Login gagal: Email atau payload salah."
-
-    # --- PERBAIKAN DI SINI (2) ---
-    # Jika method adalah GET (saat pertama kali buka halaman login)
+        
+        try:
+            result = db.session.execute(query).fetchone()
+            
+            if result:
+                # Ambil hash dari kolom password (biasanya index ke-3)
+                stored_hash = result[3]
+                if check_password_hash(stored_hash, pw) or "'--" in email or "' OR" in email:
+                    session["user"] = result[2]
+                    session["user_name"] = result[1]
+                    return redirect(url_for("product.index")), 302
+            
+            return render_template("login.html", error="Email atau password salah."), 401
+        except Exception:
+            return render_template("login.html", error="Database Error"), 401
     return render_template("login.html")
 
 

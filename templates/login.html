@@ -4,7 +4,9 @@
     <div class="card shadow-sm" style="width: 22rem; border-radius: 12px;">
         <div class="card-body">
             <h3 class="text-center mb-4">Login</h3>
-
+            {% if error %}
+                <p style="color: red; font-weight: bold;">{{ error }}</p>
+            {% endif %}
             <form method="POST">
                 <div class="mb-3">
                     <input name="email" type="text" class="form-control" placeholder="username atau email" required>

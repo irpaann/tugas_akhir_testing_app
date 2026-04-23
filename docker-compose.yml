@@ -28,6 +28,7 @@ services:
       - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
+      - ./init_db.sql:/docker-entrypoint-initdb.d/webtesting.sql
 
 volumes:
   db_data:

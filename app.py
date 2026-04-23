@@ -1,7 +1,8 @@
+
 import os
 import socket
 import requests
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template,g
 from extensions import db
 from models.rule_engine import check_rule_based
 from urllib.parse import unquote
@@ -61,18 +62,42 @@ def security_filter():
 
     client_ip = request.remote_addr
     
+    # --- INISIALISASI DATA KEAMANAN KE OBJEK 'g' ---
+    # Ini penting agar data bisa "dioper" ke fungsi log_final_status (after_request)
+    args_str = request.query_string.decode('utf-8', errors='ignore')
+    form_str = "&".join([f"{k}={v}" for k, v in request.form.items()])
+    data_str = request.get_data(as_text=True)
+    raw_payload = " ".join([p for p in [args_str, form_str, data_str] if p]).strip()
+    decoded_payload = unquote(raw_payload) if raw_payload else ""
+
+    g.security_data = {
+        "ip": client_ip,
+        "url": request.path,
+        "full_url": request.url,
+        "method": request.method,
+        "payload": decoded_payload,
+        "ua": request.headers.get("User-Agent", "-"),
+        "threat_score": 0,  # Akan diupdate di Langkah B
+        "reason": "Normal"  # Akan diupdate di Langkah B
+    }
+
     # ==========================================================
     # LANGKAH A: CEK APAKAH IP INI SUDAH MASUK DAFTAR BLACKLIST
     # ==========================================================
-    # Kita tanya ke dashboard apakah IP ini statusnya sedang BLOCKED
     try:
-        # Gunakan endpoint check yang sudah kamu definisikan di CHECK_IP_URL
-        # Contoh: http://127.0.0.1:3000/api/blacklist/check?ip=127.0.0.1
         check_ip = requests.get(f"{CHECK_IP_URL}?ip={client_ip}", timeout=0.5)
         if check_ip.status_code == 200:
             status_data = check_ip.json()
             if status_data.get("is_blocked"):
                 reason = status_data.get("reason", "IP dalam daftar hitam")
+                
+                # Update status untuk dikirim ke log sebelum di-block
+                g.security_data["reason"] = reason
+                g.security_data["status"] = 403
+                try:
+                    requests.post(MONITORING_URL, json=g.security_data, timeout=0.5)
+                except: pass
+                
                 return render_template('blocked.html', reason=reason), 403
     except Exception as e:
         app.logger.error(f"Gagal cek status blacklist: {e}")
@@ -80,52 +105,50 @@ def security_filter():
     # ==========================================================
     # LANGKAH B: SCREENING PAYLOAD (Jika IP belum di-blacklist)
     # ==========================================================
-    args_str = request.query_string.decode('utf-8', errors='ignore') # Hasil: search=buku
-    form_str = "&".join([f"{k}={v}" for k, v in request.form.items()]) # Hasil: username=admin&password=123
-    data_str = request.get_data(as_text=True) # Data mentah dari body (JSON/XML)
-
-    # Gabungkan semua (yang kosong tidak akan merusak string)
-    raw_payload_parts = [p for p in [args_str, form_str, data_str] if p]
-    raw_payload = " ".join(raw_payload_parts).strip()
-
-    # Jika tidak ada payload sama sekali (misal sekadar buka halaman depan)
-    if not raw_payload:
-        raw_payload = ""# Gunakan string kosong, JANGAN gunakan "-" karena "-"
-                        # dihitung karakter spesial oleh ML
-
-    decoded_payload = unquote(raw_payload)
-
-    security_data = {
-        "ip": client_ip,
-        "url": request.path,
-        "full_url": request.url,
-        "method": request.method,
-        "payload": decoded_payload,
-        "ua": request.headers.get("User-Agent", "-")
-    }
-
     SCREENING_URL = MONITORING_URL.replace("/log", "/api/screen") 
     
     try:
-        check_response = requests.post(SCREENING_URL, json=security_data, timeout=0.8)
+        # Gunakan data dari g.security_data agar konsisten
+        check_response = requests.post(SCREENING_URL, json=g.security_data, timeout=0.8)
         if check_response.status_code == 200:
             result = check_response.json()
+            
+            # SIMPAN HASIL SCREENING KE 'g' (Sangat Penting untuk Dashboard)
+            g.security_data["threat_score"] = result.get("threat_score", 0)
+            g.security_data["reason"] = result.get("reason", "Normal")
+
             if result.get("action") == "BLOCK":
+                # Update status menjadi 403 dan kirim log sebelum memblokir
+                g.security_data["status"] = 403
+                try:
+                    requests.post(MONITORING_URL, json=g.security_data, timeout=0.5)
+                except: pass
+                
                 return render_template('blocked.html', reason=result.get("reason")), 403
     except Exception as e:
         app.logger.error(f"Security Engine Connection Error: {e}")
 
+# ==========================================================
+# FUNGSI PENCATATAN FINAL (Mencegah Duplikasi & Mengambil Status Asli)
+# ==========================================================
 @app.after_request
 def log_final_status(response):
-    # Logika log tetap ada untuk mencatat status akhir (200, 403, 404, dll)
-    # Tapi Dashboard sudah tahu duluan dari proses screening di atas.
-    if request.path.startswith('/static'):
+    # Jangan catat jika file statis atau jika sudah dicatat saat 403 di atas
+    if request.path.startswith('/static') or response.status_code == 403:
         return response
     
-    # Dashboard mungkin butuh update status final (misal: sukses 200)
-    # Anda bisa membiarkan log_data dikirim ke /log seperti biasa.
+    # Kirim log dengan status code asli (200, 401, 302, dll)
+    if hasattr(g, 'security_data'):
+        log_payload = g.security_data
+        log_payload["status"] = response.status_code 
+        
+        try:
+            # Kirim data final ke endpoint /log dashboard
+            requests.post(MONITORING_URL, json=log_payload, timeout=0.5)
+        except:
+            pass
+            
     return response
-
 # ==========================================
 # 4. CLI COMMANDS & RUNNER
 # ==========================================
